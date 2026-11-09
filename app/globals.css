@@ -1,0 +1,60 @@
+:root {
+  --bg: #f6f4ef; --painel: #ffffff; --linha: #e4e0d6; --texto: #1d1b17; --suave: #6b665c;
+  --s1: #c2410c; --s2: #1d4ed8; --s3: #0f766e; --s4: #a16207;
+  --ok: #15803d; --alerta: #b45309; --raio: 10px;
+  --serif: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161512; --painel: #1f1e1a; --linha: #34322c; --texto: #ece9e2; --suave: #a29d92;
+    --s1: #fb923c; --s2: #60a5fa; --s3: #2dd4bf; --s4: #facc15; --ok: #4ade80; --alerta: #fbbf24;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--texto); font-family: var(--sans); font-size: 15px; line-height: 1.5; }
+.pagina { max-width: 1120px; margin: 0 auto; padding: 32px 16px 48px; display: flex; flex-direction: column; gap: 20px; }
+h1 { font-family: var(--serif); font-weight: 400; font-size: clamp(1.7rem, 4vw, 2.4rem); line-height: 1.15; margin: 4px 0 8px; }
+h2 { font-size: 1.05rem; font-weight: 600; margin: 0 0 4px; }
+h3 { font-size: 1rem; font-weight: 600; margin: 0; }
+p { margin: 0; }
+.marca { text-transform: uppercase; letter-spacing: .08em; font-size: .75rem; color: var(--suave); }
+.lede { max-width: 64ch; font-size: 1.05rem; }
+.sub { color: var(--suave); font-size: .85rem; margin: 4px 0 12px; }
+.card { background: var(--painel); border: 1px solid var(--linha); border-radius: var(--raio); padding: 18px; }
+.aviso { border: 1px solid var(--alerta); border-radius: var(--raio); padding: 10px 14px; color: var(--alerta); font-size: .9rem; display: grid; gap: 4px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+.kpi .valor { font-family: var(--serif); font-size: 1.9rem; line-height: 1.1; margin: 6px 0 4px; font-variant-numeric: tabular-nums; }
+.rot, .nota { font-size: .78rem; color: var(--suave); }
+.tabela { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: .9rem; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--linha); white-space: nowrap; }
+th { font-size: .75rem; color: var(--suave); font-weight: 600; }
+td:first-child { white-space: normal; min-width: 140px; }
+.n { text-align: right; }
+.ok { color: var(--ok); }
+.alerta { color: var(--alerta); font-weight: 600; }
+.legenda { display: flex; flex-wrap: wrap; gap: 14px; font-size: .8rem; color: var(--suave); margin: 4px 0 10px; }
+.legenda i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+.rolagem { overflow-x: auto; }
+.grafico { width: 100%; min-width: 560px; height: auto; display: block; }
+.grafico .grade { stroke: var(--linha); stroke-width: 1; }
+.grafico .eixo, .mini .eixo { fill: var(--suave); font-size: 11px; font-family: var(--sans); }
+.grafico .alvo { fill: transparent; }
+.grafico g:hover .alvo { fill: var(--linha); opacity: .5; }
+#produtos > h2 { margin-bottom: 10px; }
+.grupos { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 12px; margin-bottom: 12px; }
+.cab { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.pilula { font-size: .75rem; border: 1px solid var(--linha); border-radius: 999px; padding: 2px 10px; color: var(--suave); }
+.pilula.on { color: var(--ok); border-color: var(--ok); }
+.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(115px, 1fr)); gap: 10px 12px; margin: 8px 0 12px; }
+.sv { font-family: var(--serif); font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+.mini { width: 100%; height: auto; display: block; margin-top: 4px; }
+.camps { font-size: .78rem; color: var(--suave); margin-top: 8px; }
+details summary { cursor: pointer; color: var(--suave); font-size: .9rem; }
+details[open] summary { margin-bottom: 10px; }
+.duas { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; }
+.vazio { color: var(--suave); font-size: .85rem; padding: 20px 0; }
+.rodape { color: var(--suave); font-size: .78rem; text-align: center; margin-top: 8px; }
+@media (max-width: 520px) { .card { padding: 14px; } }
