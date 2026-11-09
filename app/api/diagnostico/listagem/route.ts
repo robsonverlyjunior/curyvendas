@@ -72,6 +72,47 @@ export async function GET(req: Request) {
   try {
     const etapa = busca.get("etapa") ?? "estrutura";
 
+    // Etapa "procurar": varre as páginas mais recentes e separa os leads cujos
+    // campos de origem (mídia, tags, campos adicionais, interação) contêm algum
+    // dos textos. Devolve só contagens por situação, corretor, mídia e dia.
+    if (etapa === "procurar") {
+      const textos = (busca.get("texto") ?? "feirao,zonanorte,zona_norte").toLowerCase().split(",").filter(Boolean);
+      const paginas = Math.min(Number(busca.get("paginas") ?? 8), 15);
+      const inicio = Number(busca.get("offset") ?? 0);
+      const norm = (x: unknown) => JSON.stringify(x ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+      const achados: Record<string, unknown>[] = [];
+      let lidos = 0, maisNovo = "", maisAntigo = "";
+      for (let i = 0; i < paginas; i++) {
+        const p = await listar({ offset: String(inicio + i * 30) });
+        const ls = ((p.corpo as Lista | null)?.leads) ?? [];
+        if (!ls.length) break;
+        lidos += ls.length;
+        maisNovo ||= String(ls[0]?.data_cad ?? ""); maisAntigo = String(ls.at(-1)?.data_cad ?? "");
+        for (const l of ls) {
+          const origem = norm([l.midia_principal, l.midias, l.tags, l.campos_adicionais, l.interacao, l.origem]);
+          if (textos.some(t => origem.includes(t.normalize("NFD").replace(/[̀-ͯ]/g, "")))) achados.push(l);
+        }
+      }
+      const nome = (x: unknown) => (x && typeof x === "object" ? String((x as Record<string, unknown>).nome ?? "—") : String(x ?? "—"));
+      const porCampo = (fn: (l: Record<string, unknown>) => string) => {
+        const m = new Map<string, number>();
+        for (const l of achados) { const k = fn(l); m.set(k, (m.get(k) ?? 0) + 1); }
+        return [...m.entries()].sort((a, b) => b[1] - a[1]);
+      };
+      return Response.json({
+        lidos, periodoLido: { maisNovo, maisAntigo }, encontrados: achados.length,
+        porSituacao: porCampo(l => nome(l.situacao)),
+        porCorretor: porCampo(l => `${nome(l.corretor)} (id ${(l.corretor as Record<string, unknown> | null)?.id ?? "—"})`),
+        porMidia: porCampo(l => String(l.midia_principal ?? "—")),
+        porTag: porCampo(l => (Array.isArray(l.tags) ? l.tags.join(" + ") : String(l.tags ?? "—"))),
+        porAutor: porCampo(l => String(l.autor_ultima_alteracao ?? "—")),
+        comSimulacao: achados.filter(l => Number(l.qtde_simulacoes_associadas) > 0).length,
+        comReserva: achados.filter(l => Number(l.qtde_reservas_associadas) > 0).length,
+        porDia: porCampo(l => String(l.data_cad ?? "").slice(0, 10)),
+        camposAdicionais: porCampo(l => (Array.isArray(l.campos_adicionais) ? l.campos_adicionais.map(c => String((c as Record<string, unknown>).slug)).join(",") : "—")),
+      });
+    }
+
     // Etapa "filtros": testa até 6 parâmetros (testar=a=1,b=2). Se o total
     // mudar em relação à listagem sem filtro, a API aceita o parâmetro.
     if (etapa === "filtros") {
