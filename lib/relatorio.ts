@@ -12,7 +12,7 @@ export type Relatorio = {
   crm: { fonte: "foto" | "cv"; extraidoEm: string | null; ate: string };
   totais: { investimento: number; leadsMeta: number; leadsCrm: number; leadsUnicos: number; cplCrm: number | null; repetidos: number; repetidosEntreRegras: number };
   regras: { id: string; nome: string; investimento: number; leadsMeta: number; leadsCrm: number; diferenca: number; cplCrm: number | null; inicio: string | null; fim: string | null }[];
-  produtos: { id: string; nome: string; ativo: boolean; inicio: string | null; fim: string | null; investimento: number; leadsMeta: number; cpl: number | null; impressoes: number; cliques: number; ctr: number | null; cpc: number | null; campanhas: string[]; porDia: { data: string; leads: number }[] }[];
+  produtos: { id: string; nome: string; ativo: boolean; inicio: string | null; fim: string | null; investimento: number; leadsMeta: number; cpl: number | null; impressoes: number; cliques: number; ctr: number | null; cpc: number | null; campanhas: string[]; porDia: { data: string; leads: number; investimento: number }[] }[];
   campanhas: { id: string; nome: string; produto: string; ativa: boolean; investimento: number; leadsMeta: number; cpl: number | null; cliques: number }[];
   investimentoDia: { data: string; valores: Record<string, number> }[];
   leadsDia: { data: string; valores: Record<string, number> }[];
@@ -67,15 +67,15 @@ function montarMeta(meta: MetaDia[], fim: string) {
     const leads = ds.reduce((s, d) => s + d.leads, 0);
     const imp = ds.reduce((s, d) => s + d.impressoes, 0);
     const cli = ds.reduce((s, d) => s + d.cliques, 0);
-    const porDiaMap = new Map<string, number>();
-    for (const d of ds) porDiaMap.set(d.data, (porDiaMap.get(d.data) ?? 0) + d.leads);
+    const porDiaMap = new Map<string, { leads: number; investimento: number }>();
+    for (const d of ds) { const v = porDiaMap.get(d.data) ?? { leads: 0, investimento: 0 }; v.leads += d.leads; v.investimento += d.investimento; porDiaMap.set(d.data, v); }
     const inicio = comGasto[0] ?? null, ultimo = comGasto.at(-1) ?? null;
     return {
       id: p.id, nome: p.nome, ativo: !!ultimo && ultimo >= ultimoDia, inicio, fim: ultimo,
       investimento: r2(inv), leadsMeta: leads, cpl: div(inv, leads), impressoes: imp, cliques: cli,
       ctr: imp > 0 ? r2((cli / imp) * 100) : null, cpc: div(inv, cli),
       campanhas: campanhas.filter(c => c.produto === p.id).map(c => c.nome),
-      porDia: inicio && ultimo ? diasEntre(inicio, ultimo).map(data => ({ data, leads: porDiaMap.get(data) ?? 0 })) : [],
+      porDia: inicio && ultimo ? diasEntre(inicio, ultimo).map(data => ({ data, leads: porDiaMap.get(data)?.leads ?? 0, investimento: r2(porDiaMap.get(data)?.investimento ?? 0) })) : [],
     };
   }).filter(p => p.investimento > 0 || p.leadsMeta > 0);
 
@@ -215,7 +215,7 @@ const emCache = unstable_cache(async () => {
   const r = await gerar();
   if (r.erros.meta || r.erros.cv) throw new Parcial(r);
   return r;
-}, ["relatorio-feiroes-v1"], { revalidate: CACHE_SEGUNDOS });
+}, ["relatorio-feiroes-v2"], { revalidate: CACHE_SEGUNDOS });
 
 export async function obterRelatorio(): Promise<Relatorio> {
   try { return await emCache(); }
