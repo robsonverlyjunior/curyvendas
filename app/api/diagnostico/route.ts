@@ -36,3 +36,4 @@ export async function GET(req: Request) {
     return Response.json({ erro: (e as Error).message }, { status: 502 });
   }
 }
+export const maxDuration = 120;

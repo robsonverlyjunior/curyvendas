@@ -89,9 +89,9 @@ function montarMeta(meta: MetaDia[], fim: string) {
 export async function gerar(): Promise<Relatorio> {
   const { data: hoje, hora } = agoraSP();
   const erros: Relatorio["erros"] = {};
-  // Cada fonte tem até 50 s; se uma travar, a outra ainda aparece na página.
+  // Cada fonte tem até 110 s; se uma travar, a outra ainda aparece na página.
   const limite = <T,>(p: Promise<T>, nome: string) => Promise.race([p, new Promise<never>((_, rej) =>
-    setTimeout(() => rej(new Error(`${nome} demorou mais de 50 segundos para responder.`)), 50000))]);
+    setTimeout(() => rej(new Error(`${nome} demorou mais de 110 segundos para responder.`)), 110000))]);
   const [metaRes, cvRes] = await Promise.allSettled([limite(lerMeta(INICIO, hoje), "O Ads Editor"), limite(lerLeadsCV(INICIO), "O CV")]);
   const meta = metaRes.status === "fulfilled" ? metaRes.value : (erros.meta = String((metaRes.reason as Error)?.message ?? metaRes.reason), []);
   const todos = cvRes.status === "fulfilled" ? cvRes.value : (erros.cv = String((cvRes.reason as Error)?.message ?? cvRes.reason), []);

@@ -5,7 +5,7 @@ import { Barras, BarrasDia, Mini, type Serie } from "./graficos";
 // Gerada quando alguém abre (nunca no build). Os dados ficam em cache por
 // 10 minutos em lib/relatorio.ts, então só a primeira visita espera a busca.
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 const CORES = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
 const brl = (n: number | null) => (n == null ? "—" : n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
