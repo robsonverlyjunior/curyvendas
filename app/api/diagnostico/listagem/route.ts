@@ -70,41 +70,39 @@ export async function GET(req: Request) {
     return Response.json({ erro: "Não autorizado." }, { status: 401 });
 
   try {
-    // 1) Sem filtro: estrutura e total.
-    const base = await listar({ offset: "0" });
-    const corpoBase = base.corpo as Lista | null;
-    const totalBase = corpoBase?.total ?? null;
-    const amostra: Record<string, unknown>[] = [...(corpoBase?.leads ?? [])];
-    for (const off of [30, 60, 90]) {
-      const p = await listar({ offset: String(off) });
+    const etapa = busca.get("etapa") ?? "estrutura";
+
+    // Etapa "filtros": testa até 6 parâmetros (testar=a=1,b=2). Se o total
+    // mudar em relação à listagem sem filtro, a API aceita o parâmetro.
+    if (etapa === "filtros") {
+      const base = await listar({ offset: "0" });
+      const totalBase = (base.corpo as Lista | null)?.total ?? null;
+      const pares = (busca.get("testar") ?? "").split(",").map(p => p.split("=")).filter(p => p.length === 2).slice(0, 6) as [string, string][];
+      const filtros: Record<string, unknown> = {};
+      for (const [k, v] of pares) {
+        const r = await listar({ offset: "0", [k]: v });
+        const c = r.corpo as Lista | null;
+        filtros[`${k}=${v}`] = { status: r.status, total: c?.total ?? null, veio: c?.leads?.length ?? null, mudou: c?.total != null && String(c.total) !== String(totalBase) };
+      }
+      return Response.json({ totalSemFiltro: totalBase, filtros });
+    }
+
+    // Etapa "estrutura": campos do lead e valores dos campos de origem/usuário.
+    const offsets = (busca.get("offsets") ?? "0").split(",").slice(0, 3);
+    const amostra: Record<string, unknown>[] = [];
+    let corpoBase: Lista | null = null, statusBase = 0, textoBase: string | undefined;
+    for (const off of offsets) {
+      const p = await listar({ offset: off });
+      if (!corpoBase) { corpoBase = p.corpo as Lista | null; statusBase = p.status; textoBase = p.texto; }
       amostra.push(...(((p.corpo as Lista | null)?.leads) ?? []));
     }
     const chaves = amostra[0] ? Object.keys(amostra[0]) : [];
-    const interessantes = chaves.filter(k => !PESSOAIS.test(k) && /origem|midia|usuario|cadastr|criad|conversao|regra|fila|canal|tag|situacao|gestor|corretor|empreend|integra|fonte|campanha|form/i.test(k));
-
-    // 2) Filtros candidatos: se o total mudar, a API aceita o filtro.
-    const extra = busca.get("testar"); // ex.: testar=idusuario_cadastro=123,origem=FB
-    const candidatos: [string, string][] = [
-      ["data_cad_inicio", "2026-11-01"], ["data_inicio", "2026-11-01"], ["data_cadastro_inicio", "2026-11-01"],
-      ["dt_inicio", "2026-11-01"], ["a_partir_data", "2026-11-01"], ["data_cad", "2026-11-01"],
-      ["idusuario", "1"], ["idusuario_cadastro", "1"], ["usuario", "1"], ["idgestor", "1"], ["idcorretor", "1"],
-      ["origem", "FB"], ["midia", "Facebook"], ["idsituacao", "1"], ["situacao", "1"], ["limit", "5"], ["limite", "5"],
-      ...(extra ? extra.split(",").map(p => p.split("=") as [string, string]).filter(p => p.length === 2) : []),
-    ];
-    const filtros: Record<string, unknown> = {};
-    for (const [k, v] of candidatos) {
-      const r = await listar({ offset: "0", [k]: v });
-      const c = r.corpo as Lista | null;
-      filtros[`${k}=${v}`] = { status: r.status, total: c?.total ?? null, veio: c?.leads?.length ?? null, mudou: c?.total != null && String(c.total) !== String(totalBase) };
-      await espera(400);
-    }
-
+    const interessantes = chaves.filter(k => !PESSOAIS.test(k) && /origem|midia|usuario|cadastr|criad|conversao|regra|fila|canal|tag|situacao|gestor|corretor|empreend|integra|fonte|campanha|form|data/i.test(k));
     return Response.json({
-      status: base.status, total: totalBase, chavesDaResposta: corpoBase ? Object.keys(corpoBase) : base.texto,
+      status: statusBase, total: corpoBase?.total ?? null, chavesDaResposta: corpoBase ? Object.keys(corpoBase) : textoBase,
       leadsNaAmostra: amostra.length, camposDoLead: chaves,
       exemploDeLead: amostra[0] ? forma(amostra[0], "") : null,
       valores: Object.fromEntries(interessantes.map(k => [k, contar(amostra, k)])),
-      filtros,
     });
   } catch (e) {
     return Response.json({ erro: (e as Error).message }, { status: 502 });
