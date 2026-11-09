@@ -89,7 +89,10 @@ function montarMeta(meta: MetaDia[], fim: string) {
 export async function gerar(): Promise<Relatorio> {
   const { data: hoje, hora } = agoraSP();
   const erros: Relatorio["erros"] = {};
-  const [metaRes, cvRes] = await Promise.allSettled([lerMeta(INICIO, hoje), lerLeadsCV(INICIO)]);
+  // Cada fonte tem até 50 s; se uma travar, a outra ainda aparece na página.
+  const limite = <T,>(p: Promise<T>, nome: string) => Promise.race([p, new Promise<never>((_, rej) =>
+    setTimeout(() => rej(new Error(`${nome} demorou mais de 50 segundos para responder.`)), 50000))]);
+  const [metaRes, cvRes] = await Promise.allSettled([limite(lerMeta(INICIO, hoje), "O Ads Editor"), limite(lerLeadsCV(INICIO), "O CV")]);
   const meta = metaRes.status === "fulfilled" ? metaRes.value : (erros.meta = String((metaRes.reason as Error)?.message ?? metaRes.reason), []);
   const todos = cvRes.status === "fulfilled" ? cvRes.value : (erros.cv = String((cvRes.reason as Error)?.message ?? cvRes.reason), []);
 
@@ -169,4 +172,16 @@ export async function gerar(): Promise<Relatorio> {
 }
 
 /** Relatório com cache de 10 minutos compartilhado entre todos os visitantes. */
-export const obterRelatorio = unstable_cache(gerar, ["relatorio-feiroes-v1"], { revalidate: CACHE_SEGUNDOS });
+// Relatório com alguma fonte em erro não entra no cache (erros não são
+// guardados), para a próxima visita já tentar de novo.
+class Parcial extends Error { constructor(public relatorio: Relatorio) { super("relatório parcial"); } }
+const emCache = unstable_cache(async () => {
+  const r = await gerar();
+  if (r.erros.meta || r.erros.cv) throw new Parcial(r);
+  return r;
+}, ["relatorio-feiroes-v1"], { revalidate: CACHE_SEGUNDOS });
+
+export async function obterRelatorio(): Promise<Relatorio> {
+  try { return await emCache(); }
+  catch (e) { if (e instanceof Parcial) return e.relatorio; throw e; }
+}

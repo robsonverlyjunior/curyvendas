@@ -28,21 +28,27 @@ function credenciais() {
 /** Todos os leads com referência a partir de `inicio` (YYYY-MM-DD). */
 export async function lerLeadsCV(inicio: string): Promise<LeadCV[]> {
   const { url, email, token } = credenciais();
-  const leads: LeadCV[] = [];
-  for (let pagina = 1; pagina <= 400; pagina++) {
+  const buscar = async (pagina: number): Promise<Pagina> => {
     const qs = new URLSearchParams({
       pagina: String(pagina), registros_por_pagina: "500", a_partir_data_referencia: inicio,
     });
     const res = await fetch(`${url}/api/v1/cvdw/leads?${qs}`, {
       headers: { email, token, Accept: "application/json" },
-      signal: AbortSignal.timeout(45000), cache: "no-store",
+      signal: AbortSignal.timeout(40000), cache: "no-store",
     });
-    if (res.status === 204) break;
+    if (res.status === 204) return { dados: [] };
     if (res.status === 401) throw new Error("O CV recusou o e-mail/token (CV_EMAIL e CV_TOKEN).");
     if (!res.ok) throw new Error(`O CV respondeu HTTP ${res.status} na página ${pagina} de leads.`);
-    const body = await res.json() as Pagina;
-    leads.push(...(body.dados ?? []));
-    if (!body.total_de_paginas || pagina >= body.total_de_paginas) break;
+    return await res.json() as Pagina;
+  };
+  // Primeira página diz quantas existem; as demais vêm em paralelo, 6 por vez.
+  const primeira = await buscar(1);
+  const total = Math.min(primeira.total_de_paginas ?? 1, 200);
+  const leads: LeadCV[] = [...(primeira.dados ?? [])];
+  const restantes = Array.from({ length: Math.max(0, total - 1) }, (_, i) => i + 2);
+  for (let i = 0; i < restantes.length; i += 6) {
+    const lote = await Promise.all(restantes.slice(i, i + 6).map(buscar));
+    for (const p of lote) leads.push(...(p.dados ?? []));
   }
   // A API devolve uma linha por versão do lead; fica a mais recente de cada um.
   const porId = new Map<string, LeadCV>();

@@ -2,8 +2,10 @@ import { obterRelatorio } from "@/lib/relatorio";
 import { REGRAS } from "@/lib/config";
 import { Barras, BarrasDia, Mini, type Serie } from "./graficos";
 
-// A página é refeita no máximo a cada 10 minutos, quando alguém abre.
-export const revalidate = 600;
+// Gerada quando alguém abre (nunca no build). Os dados ficam em cache por
+// 10 minutos em lib/relatorio.ts, então só a primeira visita espera a busca.
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 const CORES = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
 const brl = (n: number | null) => (n == null ? "—" : n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
