@@ -58,3 +58,4 @@ details[open] summary { margin-bottom: 10px; }
 .vazio { color: var(--suave); font-size: .85rem; padding: 20px 0; }
 .rodape { color: var(--suave); font-size: .78rem; text-align: center; margin-top: 8px; }
 @media (max-width: 520px) { .card { padding: 14px; } }
+.nota-foto { margin-top: 10px; font-size: .85rem; border-left: 3px solid var(--s2); padding: 6px 10px; background: var(--painel); border-radius: 0 6px 6px 0; max-width: 72ch; }

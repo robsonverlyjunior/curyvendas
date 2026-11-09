@@ -19,6 +19,8 @@ export default async function Pagina() {
   const r = await obterRelatorio();
   const series: Serie[] = REGRAS.map((g, i) => ({ id: g.id, nome: g.nome, cor: CORES[i % CORES.length]! }));
   const temCv = !r.erros.cv;
+  const foto = r.crm.fonte === "foto";
+  const crmNome = foto ? "NotificaLead" : "CV";
   const temMeta = !r.erros.meta;
   const emNovo = r.situacoes.find(s => /^novo$/i.test(s.situacao))?.leads ?? 0;
 
@@ -30,7 +32,7 @@ export default async function Pagina() {
         {temCv && temMeta ? (
           <p className="lede">
             Com <b>{brl(r.totais.investimento)}</b> investidos nas campanhas de leads dos feirões, entraram{" "}
-            <b>{int(r.totais.leadsCrm)}</b> leads no CV, a <b>{brl(r.totais.cplCrm)}</b> por lead. O Meta registrou{" "}
+            <b>{int(r.totais.leadsCrm)}</b> leads no {crmNome}{foto ? ` até ${dm(r.crm.ate)}` : ""}, a <b>{brl(r.totais.cplCrm)}</b> por lead. O Meta registrou{" "}
             <b>{int(r.totais.leadsMeta)}</b> leads no mesmo período.
           </p>
         ) : null}
@@ -38,6 +40,9 @@ export default async function Pagina() {
           De {dm(r.inicio)} a {dm(r.fim)}/{r.fim.slice(0, 4)} · atualizado em {r.geradoEm} (renova a cada 10 minutos). Só campanhas de leads de
           venda dos feirões; vagas de corretor e tráfego para o Instagram ficam de fora.
         </p>
+        {foto && (
+          <p className="nota-foto">Meta Ads ao vivo. Os números de leads no CRM são do NotificaLead extraídos em {r.crm.extraidoEm} e ficam fixos até a leitura automática ser ligada; as comparações Meta × CRM usam o Meta só até essa data.</p>
+        )}
         {(r.erros.meta || r.erros.cv) && (
           <div className="aviso" role="alert">
             {r.erros.meta && <p><b>Meta Ads indisponível:</b> {r.erros.meta}</p>}
@@ -48,8 +53,8 @@ export default async function Pagina() {
 
       <section className="kpis" aria-label="Indicadores">
         <Kpi rotulo="Investimento no Meta" valor={temMeta ? brl(r.totais.investimento) : "—"} nota={`${r.campanhas.length} campanhas de leads`} />
-        <Kpi rotulo="Leads no CRM" valor={temCv ? int(r.totais.leadsCrm) : "—"} nota={`desde ${dm(r.inicio)}`} />
-        <Kpi rotulo="Custo por lead no CRM" valor={temCv && temMeta ? brl(r.totais.cplCrm) : "—"} nota="investimento ÷ leads no CV" />
+        <Kpi rotulo={`Leads no ${crmNome}`} valor={temCv ? int(r.totais.leadsCrm) : "—"} nota={foto ? `${dm(r.inicio)} a ${dm(r.crm.ate)} (fixo)` : `desde ${dm(r.inicio)}`} />
+        <Kpi rotulo="Custo por lead no CRM" valor={temCv && temMeta ? brl(r.totais.cplCrm) : "—"} nota={foto ? `investimento até ${dm(r.crm.ate)} ÷ leads no NotificaLead` : "investimento ÷ leads no CV"} />
         <Kpi rotulo="Leads no Meta" valor={temMeta ? int(r.totais.leadsMeta) : "—"} nota="formulários do Facebook/Instagram" />
         <Kpi rotulo="Leads únicos (por telefone)" valor={temCv ? int(r.totais.leadsUnicos) : "—"}
           nota={`${r.totais.repetidos} telefones repetidos${r.totais.repetidosEntreRegras ? `, ${r.totais.repetidosEntreRegras} em mais de um feirão` : ""}`} />
@@ -61,7 +66,7 @@ export default async function Pagina() {
 
       <section className="card" id="conciliacao">
         <h2>Meta Ads × CRM, por feirão</h2>
-        <p className="sub">Cada feirão junta as campanhas cujos formulários caem na mesma regra do CRM. Porto e Zona Norte usam o formulário do Corre, então entram nele.</p>
+        <p className="sub">{foto ? `Até ${dm(r.crm.ate)}. ` : ""}Cada feirão junta as campanhas cujos formulários caem na mesma regra do CRM. Porto e Zona Norte usam o formulário do Corre, então entram nele.</p>
         <div className="tabela"><table>
           <thead><tr><th>Feirão</th><th>Leads no CRM de</th><th className="n">Investimento</th><th className="n">Leads no Meta</th><th className="n">Leads no CRM</th><th className="n">Diferença</th><th className="n">Custo por lead (CRM)</th></tr></thead>
           <tbody>{r.regras.map(x => (
@@ -135,9 +140,9 @@ export default async function Pagina() {
       <section className="duas">
         <div className="card" id="situacao">
           <h2>Em que etapa estão</h2>
-          <p className="sub">{r.totais.leadsCrm ? `${Math.round((emNovo / r.totais.leadsCrm) * 100)}% dos leads ainda estão em "Novo".` : "Situação atual dos leads no CV."}</p>
+          <p className="sub">{r.totais.leadsCrm ? `${Math.round((emNovo / r.totais.leadsCrm) * 100)}% dos leads estão em "Novo"${foto ? ` no NotificaLead (${r.crm.extraidoEm})` : ""}.` : "Situação atual dos leads no CV."}</p>
           <div className="tabela"><table>
-            <thead><tr><th>Situação no CV</th><th className="n">Leads</th><th className="n">%</th></tr></thead>
+            <thead><tr><th>Situação no {crmNome}</th><th className="n">Leads</th><th className="n">%</th></tr></thead>
             <tbody>{r.situacoes.map(s => (
               <tr key={s.situacao}><td>{s.situacao}</td><td className="n">{int(s.leads)}</td><td className="n">{pct(r.totais.leadsCrm ? Math.round((s.leads / r.totais.leadsCrm) * 1000) / 10 : null)}</td></tr>
             ))}</tbody>
@@ -155,7 +160,7 @@ export default async function Pagina() {
         </div>
       </section>
 
-      <footer className="rodape">Dados do Meta Ads (via Ads Editor) e do CV CRM. Nenhum dado pessoal de lead é exibido nesta página.</footer>
+      <footer className="rodape">Dados do Meta Ads (via Ads Editor) e do {foto ? "NotificaLead" : "CV CRM"}. Nenhum dado pessoal de lead é exibido nesta página.</footer>
     </main>
   );
 }

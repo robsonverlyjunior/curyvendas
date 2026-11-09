@@ -1,12 +1,15 @@
 import { unstable_cache } from "next/cache";
 import { CACHE_SEGUNDOS, INICIO, PRODUTOS, REGRAS } from "./config";
 import { lerMeta, type MetaDia } from "./meta";
+import { FOTO } from "./foto-notifica";
 import { emailValido, formularioDoLead, lerLeadsCV, regraDoLead, telefoneNormalizado, type LeadCV } from "./cv";
 
 /** Tudo o que a página mostra. Só números agregados: nenhum dado pessoal. */
 export type Relatorio = {
   geradoEm: string; inicio: string; fim: string;
   erros: { meta?: string; cv?: string };
+  /** De onde vêm os números do CRM: foto do NotificaLead ou CV ao vivo. */
+  crm: { fonte: "foto" | "cv"; extraidoEm: string | null; ate: string };
   totais: { investimento: number; leadsMeta: number; leadsCrm: number; leadsUnicos: number; cplCrm: number | null; repetidos: number; repetidosEntreRegras: number };
   regras: { id: string; nome: string; investimento: number; leadsMeta: number; leadsCrm: number; diferenca: number; cplCrm: number | null; inicio: string | null; fim: string | null }[];
   produtos: { id: string; nome: string; ativo: boolean; inicio: string | null; fim: string | null; investimento: number; leadsMeta: number; cpl: number | null; impressoes: number; cliques: number; ctr: number | null; cpc: number | null; campanhas: string[]; porDia: { data: string; leads: number }[] }[];
@@ -92,16 +95,56 @@ export async function gerar(): Promise<Relatorio> {
   // Cada fonte tem até 110 s; se uma travar, a outra ainda aparece na página.
   const limite = <T,>(p: Promise<T>, nome: string) => Promise.race([p, new Promise<never>((_, rej) =>
     setTimeout(() => rej(new Error(`${nome} demorou mais de 110 segundos para responder.`)), 110000))]);
-  const [metaRes, cvRes] = await Promise.allSettled([limite(lerMeta(INICIO, hoje), "O Ads Editor"), limite(lerLeadsCV(INICIO), "O CV")]);
+  const usarCv = process.env.CRM_FONTE?.trim() === "cv";
+  const [metaRes, cvRes] = await Promise.allSettled([
+    limite(lerMeta(INICIO, hoje), "O Ads Editor"),
+    usarCv ? limite(lerLeadsCV(INICIO), "O CV") : Promise.resolve([] as LeadCV[]),
+  ]);
   const meta = metaRes.status === "fulfilled" ? metaRes.value : (erros.meta = String((metaRes.reason as Error)?.message ?? metaRes.reason), []);
+  const { campanhas, produtos, invDia } = montarMeta(meta, hoje);
+  const investimento = r2(produtos.reduce((s, p) => s + p.investimento, 0));
+  const leadsMeta = produtos.reduce((s, p) => s + p.leadsMeta, 0);
+  const diasMeta = [...invDia.keys()].sort();
+  const investimentoDia = diasMeta.length ? diasEntre(diasMeta[0]!, diasMeta.at(-1)!).map(data => ({ data, valores: invDia.get(data) ?? {} })) : [];
+  const geradoEm = `${hoje.slice(8, 10)}/${hoje.slice(5, 7)}/${hoje.slice(0, 4)} às ${hora}`;
+
+  if (!usarCv) {
+    // CRM pela foto do NotificaLead. A comparação com o Meta usa só os dias
+    // até a data da foto, para os dois lados cobrirem o mesmo período.
+    const ate = FOTO.ate;
+    const metaAte = meta.filter(d => d.data <= ate);
+    const regras = REGRAS.map(r => {
+      const f = FOTO.regras.find(x => x.id === r.id);
+      const ds = metaAte.filter(d => r.produtos.includes(d.produto));
+      const inv = ds.reduce((s, d) => s + d.investimento, 0), lm = ds.reduce((s, d) => s + d.leads, 0);
+      const lc = f?.leads ?? 0;
+      return { id: r.id, nome: r.nome, investimento: r2(inv), leadsMeta: lm, leadsCrm: lc, diferenca: lc - lm, cplCrm: div(inv, lc), inicio: f?.inicio ?? null, fim: f?.fim ?? null };
+    });
+    const leadsCrm = FOTO.regras.reduce((s, r) => s + r.leads, 0);
+    const invAte = regras.reduce((s, r) => s + r.investimento, 0);
+    const nomeRegra = (id: string) => REGRAS.find(r => r.id === id)?.nome ?? id;
+    return {
+      geradoEm, inicio: INICIO, fim: hoje, erros, crm: { fonte: "foto", extraidoEm: FOTO.extraidoEm, ate },
+      totais: {
+        investimento, leadsMeta, leadsCrm,
+        leadsUnicos: FOTO.regras.reduce((s, r) => s + r.unicos, 0) - FOTO.repetidosEntreRegras,
+        cplCrm: div(invAte, leadsCrm), repetidos: FOTO.repetidos, repetidosEntreRegras: FOTO.repetidosEntreRegras,
+      },
+      regras, produtos, campanhas, investimentoDia,
+      leadsDia: FOTO.dias.map(([data, corre, servidor]) => ({ data, valores: { corre, servidor } })),
+      horas: FOTO.horas.map((leads, hora) => ({ hora, leads })),
+      formularios: FOTO.formularios.map(f => ({ ...f, regra: nomeRegra(f.regra) })),
+      qualidade: FOTO.regras.map(r => ({ regra: nomeRegra(r.id), leads: r.leads, unicos: r.unicos, semEmail: r.semEmail, telefoneInvalido: r.telefoneInvalido })),
+      situacoes: FOTO.situacoes, semRegra: 0,
+    };
+  }
+
   const todos = cvRes.status === "fulfilled" ? cvRes.value : (erros.cv = String((cvRes.reason as Error)?.message ?? cvRes.reason), []);
 
   // Leads do CV no período, com regra identificada.
   const doPeriodo = todos.filter(l => { const p = partesData(l.data_cad); return p && p.data >= INICIO && p.data <= hoje; });
   const leads = doPeriodo.map(l => ({ l, regra: regraDoLead(l), quando: partesData(l.data_cad)! })).filter(x => x.regra);
   const semRegra = doPeriodo.length - leads.length;
-
-  const { campanhas, produtos, invDia } = montarMeta(meta, hoje);
 
   // Telefones repetidos (dentro e entre regras).
   const regrasPorTel = new Map<string, Set<string>>();
@@ -127,12 +170,6 @@ export async function gerar(): Promise<Relatorio> {
     const datas = ls.map(x => x.quando.data).sort();
     return { id: r.id, nome: r.nome, investimento: r2(inv), leadsMeta: lm, leadsCrm: ls.length, diferenca: ls.length - lm, cplCrm: div(inv, ls.length), inicio: datas[0] ?? null, fim: datas.at(-1) ?? null };
   });
-
-  const investimento = r2(produtos.reduce((s, p) => s + p.investimento, 0));
-  const leadsMeta = produtos.reduce((s, p) => s + p.leadsMeta, 0);
-
-  const diasMeta = [...invDia.keys()].sort();
-  const investimentoDia = diasMeta.length ? diasEntre(diasMeta[0]!, diasMeta.at(-1)!).map(data => ({ data, valores: invDia.get(data) ?? {} })) : [];
 
   const leadsDiaMap = new Map<string, Record<string, number>>();
   for (const { regra, quando } of leads) { const v = leadsDiaMap.get(quando.data) ?? {}; v[regra!] = (v[regra!] ?? 0) + 1; leadsDiaMap.set(quando.data, v); }
@@ -160,8 +197,7 @@ export async function gerar(): Promise<Relatorio> {
   for (const { l } of leads) { const s = String(l.situacao || "Sem situação"); sitMap.set(s, (sitMap.get(s) ?? 0) + 1); }
 
   return {
-    geradoEm: `${hoje.slice(8, 10)}/${hoje.slice(5, 7)}/${hoje.slice(0, 4)} às ${hora}`,
-    inicio: INICIO, fim: hoje, erros,
+    geradoEm, inicio: INICIO, fim: hoje, erros, crm: { fonte: "cv", extraidoEm: null, ate: hoje },
     totais: { investimento, leadsMeta, leadsCrm: leads.length, leadsUnicos: unicosDe(leads.map(x => x.l)), cplCrm: div(investimento, leads.length), repetidos, repetidosEntreRegras },
     regras, produtos, campanhas, investimentoDia, leadsDia, horas,
     formularios: [...formMap.values()].sort((a, b) => b.leads - a.leads),
