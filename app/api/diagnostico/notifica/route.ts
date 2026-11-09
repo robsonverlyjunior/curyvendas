@@ -31,6 +31,27 @@ export async function GET(req: Request) {
     return Response.json({ erro: "Não autorizado." }, { status: 401 });
 
   const out: Record<string, unknown> = {};
+
+  // Modo sondagem: testa rotas GET não documentadas (só status e chaves).
+  const sondar = new URL(req.url).searchParams.get("sondar");
+  if (sondar) {
+    const { nlGetBruto } = await import("@/lib/notifica");
+    for (const caminho of sondar.split(",").slice(0, 12)) {
+      try {
+        const r = await nlGetBruto(caminho);
+        const corpo = r.json as Record<string, unknown> | null;
+        const data = (corpo?.data ?? corpo) as Record<string, unknown> | unknown[] | null;
+        out[caminho] = {
+          status: r.status, tipo: r.tipo,
+          chaves: data && typeof data === "object" ? (Array.isArray(data) ? [`array(${data.length})`] : Object.keys(data)) : null,
+          paginacao: data && !Array.isArray(data) ? forma((data as Record<string, unknown>).pagination ?? (data as Record<string, unknown>).meta ?? null) : null,
+          contagens: data && !Array.isArray(data) ? Object.fromEntries(Object.entries(data).filter(([, v]) => Array.isArray(v)).map(([k, v]) => [k, (v as unknown[]).length])) : null,
+          exemplo: data && !Array.isArray(data) ? forma(Object.values(data).find(v => Array.isArray(v) && v.length) ? (Object.values(data).find(v => Array.isArray(v) && v.length) as unknown[])[0] : null) : Array.isArray(data) ? forma(data[0]) : null,
+        };
+      } catch (e) { out[caminho] = { erro: (e as Error).message }; }
+    }
+    return Response.json(out);
+  }
   const tentar = async (nome: string, fn: () => Promise<unknown>) => {
     try { out[nome] = await fn(); } catch (e) { out[nome] = { erro: (e as Error).message }; }
   };

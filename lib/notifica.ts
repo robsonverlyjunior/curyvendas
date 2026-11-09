@@ -59,6 +59,21 @@ export async function nlGet<T = unknown>(caminho: string, params: Record<string,
   throw new Error(`O NotificaLead não respondeu a ${caminho} depois de 3 tentativas.`);
 }
 
+/** GET sem tratar erro de status (para investigar rotas). Só caminhos /api/. */
+export async function nlGetBruto(caminho: string): Promise<{ status: number; tipo: string; json: unknown }> {
+  if (!/^\/api\/[a-z0-9_\/?=&.-]+$/i.test(caminho)) throw new Error("Caminho inválido.");
+  const { url } = config();
+  const token = await login();
+  const res = await fetch(`${url}${caminho}`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+    cache: "no-store", signal: AbortSignal.timeout(20000), redirect: "manual",
+  });
+  const tipo = res.headers.get("content-type") ?? "";
+  let json: unknown = null;
+  if (tipo.includes("json")) { try { json = await res.json(); } catch { json = null; } } else await res.body?.cancel();
+  return { status: res.status, tipo: tipo.split(";")[0]!, json };
+}
+
 type PaginaLeads = { data?: { leads?: LeadNL[]; pagination?: { page?: number; per_page?: number; total?: number } } };
 
 /** Todos os leads que o usuário do login enxerga. */
