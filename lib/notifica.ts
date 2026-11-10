@@ -63,9 +63,14 @@ export async function nlGet<T = unknown>(caminho: string, params: Record<string,
 export async function nlGetBruto(caminho: string): Promise<{ status: number; tipo: string; json: unknown }> {
   if (!/^\/api\/[a-z0-9_\/?=&.-]+$/i.test(caminho)) throw new Error("Caminho inválido.");
   const { url } = config();
-  const token = await login();
+  // A busca por código CRM (/leads/lookup) usa o token de integração da conta.
+  const contaToken = process.env.NL_TOKEN?.trim();
+  const headers: Record<string, string> = caminho.startsWith("/api/v1/leads/lookup")
+    ? { "X-Notificalead-Token": contaToken ?? "", Accept: "application/json" }
+    : { Authorization: `Bearer ${await login()}`, Accept: "application/json" };
+  if (caminho.startsWith("/api/v1/leads/lookup") && !contaToken) throw new Error("Falta a variável NL_TOKEN (token de integração da conta).");
   const res = await fetch(`${url}${caminho}`, {
-    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+    headers,
     cache: "no-store", signal: AbortSignal.timeout(20000), redirect: "manual",
   });
   const tipo = res.headers.get("content-type") ?? "";
