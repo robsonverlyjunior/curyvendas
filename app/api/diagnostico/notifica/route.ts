@@ -55,18 +55,30 @@ export async function GET(req: Request) {
   // Modo "regras": conta leads por regra nas primeiras N páginas e testa
   // parâmetros de filtro da lista (filtro=nome=valor).
   if (qs.get("regras")) {
-    const paginas = Math.min(Number(qs.get("paginas") ?? 6), 20);
-    const extra = Object.fromEntries((qs.get("filtro") ?? "").split(",").map(p => p.split("=")).filter(p => p.length === 2));
+    const desde = qs.get("desde") ?? "2026-09-21";
+    const inicioMs = Date.now();
     const m = new Map<string, number>();
-    let total = 0, antigo = "";
-    for (let page = 1; page <= paginas; page++) {
-      const r = await nlGet<{ data?: { leads?: LeadNL[]; pagination?: { total?: number } } }>("/api/v1/agent/leads", { page: String(page), per_page: "100", ...extra });
-      const ls = r.data?.leads ?? [];
-      total = Number(r.data?.pagination?.total ?? 0);
-      for (const l of ls) { const dr = l.distribution_rule as { id?: string; name?: string } | undefined; const k = `${dr?.id ?? "—"} · ${dr?.name ?? "sem regra"}`; m.set(k, (m.get(k) ?? 0) + 1); antigo = String(l.created_at ?? antigo); }
-      if (ls.length < 100) break;
+    const extra = {};
+    let total = 0, antigo = "", paginasLidas = 0, parar = false;
+    for (let lote = 0; lote < 40 && !parar; lote++) {
+      const nums = Array.from({ length: 5 }, (_, i) => lote * 5 + i + 1);
+      const res = await Promise.all(nums.map(page => nlGet<{ data?: { leads?: LeadNL[]; pagination?: { total?: number } } }>("/api/v1/agent/leads", { page: String(page), per_page: "50" })));
+      for (const r of res) {
+        const ls = r.data?.leads ?? [];
+        total = Number(r.data?.pagination?.total ?? total);
+        if (!ls.length) { parar = true; continue; }
+        paginasLidas++;
+        for (const l of ls) {
+          const data = String(l.created_at ?? "").slice(0, 10);
+          if (data < desde) { parar = true; continue; }
+          const dr = l.distribution_rule as { id?: string; name?: string } | undefined;
+          const k = `${dr?.id ?? "—"} · ${dr?.name ?? "sem regra"}`; m.set(k, (m.get(k) ?? 0) + 1); antigo = String(l.created_at ?? antigo);
+        }
+      }
+      if (Date.now() - inicioMs > 45000) { parar = true; antigo += " (parou por tempo)"; }
     }
-    return Response.json({ filtro: extra, total, ateData: antigo, porRegra: [...m.entries()].sort((a, b) => b[1] - a[1]) });
+    const segundos = Math.round((Date.now() - inicioMs) / 100) / 10;
+    return Response.json({ desde, total, paginasLidas, segundos, ateData: antigo, porRegra: [...m.entries()].sort((a, b) => b[1] - a[1]) });
   }
 
   // Modo sondagem: testa rotas GET não documentadas (só status e chaves).
