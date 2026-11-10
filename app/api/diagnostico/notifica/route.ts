@@ -31,6 +31,43 @@ export async function GET(req: Request) {
     return Response.json({ erro: "Não autorizado." }, { status: 401 });
 
   const out: Record<string, unknown> = {};
+  const qs = new URL(req.url).searchParams;
+
+  // Modo "lead": detalhe de um lead com regra e histórico completos
+  // (telefones e e-mails mascarados), para achar onde fica o código do CRM.
+  const leadId = qs.get("lead");
+  if (leadId && /^\d+$/.test(leadId)) {
+    const mascarar = (v: unknown): unknown => {
+      if (typeof v === "string") return v.replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, "(e-mail)").replace(/\+?\d[\d\s()-]{8,}\d/g, m => (m.replace(/\D/g, "").length <= 7 ? m : "(telefone)"));
+      if (Array.isArray(v)) return v.map(mascarar);
+      if (v && typeof v === "object") return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, /^(name|email|phone)$/.test(k) && k !== "name" ? "(oculto)" : mascarar(x)]));
+      return v;
+    };
+    try {
+      const d = await nlGet<{ data?: Record<string, unknown> }>(`/api/v1/agent/leads/${leadId}`);
+      const l = { ...(d.data ?? {}) };
+      delete l.name; delete l.email; delete l.phone;
+      if (l.settings && typeof l.settings === "object") { const s = { ...(l.settings as Record<string, unknown>) }; delete s.name; delete s.email; delete s.phone; l.settings = s; }
+      return Response.json(mascarar(l));
+    } catch (e) { return Response.json({ erro: (e as Error).message }, { status: 502 }); }
+  }
+
+  // Modo "regras": conta leads por regra nas primeiras N páginas e testa
+  // parâmetros de filtro da lista (filtro=nome=valor).
+  if (qs.get("regras")) {
+    const paginas = Math.min(Number(qs.get("paginas") ?? 6), 20);
+    const extra = Object.fromEntries((qs.get("filtro") ?? "").split(",").map(p => p.split("=")).filter(p => p.length === 2));
+    const m = new Map<string, number>();
+    let total = 0, antigo = "";
+    for (let page = 1; page <= paginas; page++) {
+      const r = await nlGet<{ data?: { leads?: LeadNL[]; pagination?: { total?: number } } }>("/api/v1/agent/leads", { page: String(page), per_page: "100", ...extra });
+      const ls = r.data?.leads ?? [];
+      total = Number(r.data?.pagination?.total ?? 0);
+      for (const l of ls) { const dr = l.distribution_rule as { id?: string; name?: string } | undefined; const k = `${dr?.id ?? "—"} · ${dr?.name ?? "sem regra"}`; m.set(k, (m.get(k) ?? 0) + 1); antigo = String(l.created_at ?? antigo); }
+      if (ls.length < 100) break;
+    }
+    return Response.json({ filtro: extra, total, ateData: antigo, porRegra: [...m.entries()].sort((a, b) => b[1] - a[1]) });
+  }
 
   // Modo sondagem: testa rotas GET não documentadas (só status e chaves).
   const sondar = new URL(req.url).searchParams.get("sondar");
