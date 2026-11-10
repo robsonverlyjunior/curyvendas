@@ -18,6 +18,17 @@ const pct = (n: number | null, casas = 1) => (n == null ? "—" : `${n.toLocaleS
 const dm = (d: string | null) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : "—");
 const sinal = (n: number) => (n > 0 ? `+${int(n)}` : int(n));
 
+/** Agrupa dias em semanas (segunda a domingo) para o gráfico de vagas. */
+function semanas(dias: { data: string; leads: number }[]) {
+  const m = new Map<string, number>();
+  for (const d of dias) {
+    const t = new Date(d.data + "T12:00:00Z"); const dow = (t.getUTCDay() + 6) % 7;
+    const seg = new Date(t.getTime() - dow * 864e5).toISOString().slice(0, 10);
+    m.set(seg, (m.get(seg) ?? 0) + d.leads);
+  }
+  return [...m.entries()].map(([data, v]) => ({ data, valores: { v } }));
+}
+
 /** Destaques escritos a partir dos próprios números (nada fixo no texto). */
 function destaques(r: Relatorio): string[] {
   const out: string[] = [];
@@ -46,6 +57,8 @@ function destaques(r: Relatorio): string[] {
   const novo = r.situacoes.find(s => /^novo$/i.test(s.situacao))?.leads ?? 0;
   if (r.totais.leadsCrm && novo / r.totais.leadsCrm > 0.8)
     out.push(`${pct((novo / r.totais.leadsCrm) * 100, 0)} dos leads ainda estão em "Novo"${foto ? " no NotificaLead" : ""}: ou o retorno não está sendo registrado, ou os leads não foram trabalhados.`);
+  if (r.vagas.inscritos > 0)
+    out.push(`Vagas de corretor: ${int(r.vagas.inscritos)} pessoas se inscreveram desde ${dm(r.vagas.inicio)}, a ${brl(r.vagas.cpl)} por inscrito${r.vagas.ativo ? " (campanha ativa)" : ""}.`);
   return out;
 }
 
@@ -80,7 +93,7 @@ export default async function Pagina() {
       </header>
 
       <section className="kpis" aria-label="Indicadores principais">
-        <Kpi rotulo="Investimento no Meta" valor={temMeta ? brl(r.totais.investimento) : "—"} nota={`${r.campanhas.length} campanhas · ${r.produtos.length} produtos`} />
+        <Kpi rotulo="Investimento no Meta" valor={temMeta ? brl(r.totais.investimento) : "—"} nota={`${r.campanhas.length} campanhas de venda · ${r.produtos.length} produtos`} />
         <Kpi rotulo="Leads no Meta" valor={temMeta ? int(r.totais.leadsMeta) : "—"} nota={`custo por lead ${brl(r.totais.leadsMeta ? r.totais.investimento / r.totais.leadsMeta : null)}`} />
         <Kpi rotulo={`Leads no ${crm}`} valor={temCrm ? int(r.totais.leadsCrm) : "—"} nota={`${int(r.totais.leadsUnicos)} únicos por telefone${foto ? ` · até ${dm(r.crm.ate)}` : ""}`} />
         <Kpi rotulo="Custo por lead no CRM" valor={temCrm && temMeta ? brl(r.totais.cplCrm) : "—"} nota={foto ? `${brl0(invAteFoto)} até ${dm(r.crm.ate)} ÷ ${int(r.totais.leadsCrm)} leads` : "investimento ÷ leads no CV"} destaque />
@@ -189,7 +202,7 @@ export default async function Pagina() {
           <div className="card">
             <h3>Qualidade dos contatos</h3>
             <div className="tabela cartoes"><table>
-              <thead><tr><th>Feirão</th><th className="n">Leads</th><th className="n">Únicos</th><th className="n">Sem e-mail</th><th className="n">Telefone inválido</th></tr></thead>
+              <thead><tr><th>Feirão</th><th className="n">Leads</th><th className="n">Únicos</th><th className="n">Sem e-mail</th><th className="n">Tel. inválido</th></tr></thead>
               <tbody>{r.qualidade.map(q => (
                 <tr key={q.regra}><td className="campanha">{q.regra}</td><td className="n" data-r="Leads">{int(q.leads)}</td><td className="n" data-r="Únicos">{int(q.unicos)}</td>
                   <td className="n" data-r="Sem e-mail">{int(q.semEmail)} <small>{pct(q.leads ? (q.semEmail / q.leads) * 100 : null)}</small></td>
@@ -212,13 +225,60 @@ export default async function Pagina() {
         </div>
       </Secao>
 
+      <Secao n={6} titulo="Vagas de corretor" sub="Pessoas que se inscreveram pelas campanhas de leads para vaga de corretor no Meta. Ficam separadas dos feirões e não entram nos números de venda acima.">
+        {r.vagas.campanhas.length === 0 ? (
+          <div className="card"><p className="vazio">Nenhuma campanha de vaga com investimento no período.</p></div>
+        ) : (
+          <div className="duas">
+            <article className="card produto" style={{ ["--cor" as string]: "var(--c-vagas)" }}>
+              <header>
+                <h3>Inscritos para vaga</h3>
+                <span className={`selo ${r.vagas.ativo ? "on" : ""}`}>{r.vagas.ativo ? "Ativo" : "Pausado"}</span>
+              </header>
+              <p className="datas">{dm(r.vagas.inicio)} a {dm(r.vagas.fim)} · {r.vagas.campanhas.length} {r.vagas.campanhas.length === 1 ? "campanha" : "campanhas"}</p>
+              <div className="grande" style={{ marginTop: 4 }}><span>{temMeta ? int(r.vagas.inscritos) : "—"}</span><small>pessoas inscritas</small></div>
+              <dl className="grade-3">
+                <div><dt>Investimento</dt><dd>{brl(r.vagas.investimento)}</dd></div>
+                <div><dt>Custo por inscrito</dt><dd>{brl(r.vagas.cpl)}</dd></div>
+                <div><dt>Cliques</dt><dd>{int(r.vagas.cliques)}</dd></div>
+                <div><dt>Impressões</dt><dd>{int(r.vagas.impressoes)}</dd></div>
+                <div><dt>CTR</dt><dd>{pct(r.vagas.ctr, 2)}</dd></div>
+                <div><dt>Média por dia</dt><dd>{r.vagas.porDia.length ? (r.vagas.inscritos / r.vagas.porDia.length).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) : "—"}</dd></div>
+              </dl>
+              <p className="rot" style={{ marginTop: 14 }}>Inscritos por dia</p>
+              <Mini pontos={r.vagas.porDia} cor="var(--c-vagas)" />
+            </article>
+            <div className="card">
+              <h3>Inscritos por semana</h3>
+              <BarrasDia dias={semanas(r.vagas.porDia)} series={[{ id: "v", nome: "Inscritos", cor: "var(--c-vagas)" }]} formato={n => `${int(n)} inscritos`} formatoEixo={int} titulo="Inscritos para vaga por semana" altura={300} />
+            </div>
+          </div>
+        )}
+        {r.vagas.campanhas.length > 0 && (
+          <div className="card">
+            <h3>Campanhas de vaga</h3>
+            <div className="tabela cartoes" ><table>
+              <thead><tr><th>Campanha</th><th>Status</th><th className="n">Investimento</th><th className="n">Inscritos</th><th className="n">Custo por inscrito</th></tr></thead>
+              <tbody>{r.vagas.campanhas.map(c => (
+                <tr key={c.id}>
+                  <td className="campanha">{c.nome}</td>
+                  <td data-r="Status"><span className={`selo pequeno ${c.ativa ? "on" : ""}`}>{c.ativa ? "Ativa" : "Pausada"}</span></td>
+                  <td className="n" data-r="Investimento">{brl(c.investimento)}</td><td className="n" data-r="Inscritos">{int(c.inscritos)}</td><td className="n" data-r="Custo por inscrito">{brl(c.cpl)}</td>
+                </tr>
+              ))}</tbody>
+            </table></div>
+          </div>
+        )}
+      </Secao>
+
       <footer className="rodape">
         <h2>Como ler este relatório</h2>
         <ul>
           <li><b>Leads no Meta</b>: envios de formulário registrados pelo Meta Ads em cada campanha.</li>
           <li><b>Leads no {crm}</b>: leads que efetivamente chegaram ao {crm} pelos formulários dos feirões.</li>
           <li><b>Custo por lead no CRM</b>: investimento no Meta dividido pelos leads que chegaram ao {crm}{foto ? `, usando só os dias até ${dm(r.crm.ate)}` : ""}.</li>
-          <li><b>Únicos</b>: leads contados uma vez por telefone. Campanhas de vaga de corretor e de tráfego para o Instagram ficam fora.</li>
+          <li><b>Únicos</b>: leads contados uma vez por telefone. Campanhas de tráfego para o Instagram ficam fora.</li>
+          <li><b>Inscritos para vaga</b>: envios de formulário nas campanhas de vaga de corretor (Meta Ads), mostrados à parte na seção 6.</li>
         </ul>
         <p>Fontes: Meta Ads via Ads Editor{foto ? `, NotificaLead (dados de ${r.crm.extraidoEm})` : ", CV CRM"}. Atualizado em {r.geradoEm}. Nenhum dado pessoal de lead é exibido.</p>
       </footer>

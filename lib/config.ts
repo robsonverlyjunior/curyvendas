@@ -31,7 +31,11 @@ export const PRODUTOS: Produto[] = [
 ];
 
 /** Campanhas que nunca entram, mesmo que casem com um produto. */
-export const CAMPANHAS_EXCLUIDAS = /\[(VAGA|INSTA)\]|recrut/i;
+export const CAMPANHAS_EXCLUIDAS = /\[INSTA\]/i;
+
+/** Campanhas de leads para vaga de corretor (recrutamento): seção própria. */
+export const CAMPANHAS_VAGAS = /\[VAGA\]|recrut/i;
+export const VAGAS = "vagas";
 
 /**
  * Regras do CRM: como os leads chegam separados no CV. Cada regra junta os

@@ -1,5 +1,5 @@
 import { unstable_cache } from "next/cache";
-import { CACHE_SEGUNDOS, INICIO, PRODUTOS, REGRAS } from "./config";
+import { CACHE_SEGUNDOS, INICIO, PRODUTOS, REGRAS, VAGAS } from "./config";
 import { lerMeta, type MetaDia } from "./meta";
 import { FOTO } from "./foto-notifica";
 import { emailValido, formularioDoLead, lerLeadsCV, regraDoLead, telefoneNormalizado, type LeadCV } from "./cv";
@@ -21,6 +21,13 @@ export type Relatorio = {
   qualidade: { regra: string; leads: number; unicos: number; semEmail: number; telefoneInvalido: number }[];
   situacoes: { situacao: string; leads: number }[];
   semRegra: number;
+  /** Campanhas de leads para vaga de corretor (só Meta). */
+  vagas: {
+    investimento: number; inscritos: number; cpl: number | null; impressoes: number; cliques: number; ctr: number | null;
+    ativo: boolean; inicio: string | null; fim: string | null;
+    campanhas: { id: string; nome: string; ativa: boolean; investimento: number; inscritos: number; cpl: number | null; cliques: number }[];
+    porDia: { data: string; leads: number; investimento: number }[];
+  };
 };
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -44,6 +51,35 @@ function diasEntre(inicio: string, fim: string) {
 function partesData(v: unknown): { data: string; hora: number } | null {
   const m = String(v ?? "").match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2})/);
   return m ? { data: m[1]!, hora: Number(m[2]) } : null;
+}
+
+function montarVagas(meta: MetaDia[], hoje: string): Relatorio["vagas"] {
+  const ontem = new Date(Date.parse(hoje + "T12:00:00Z") - 864e5).toISOString().slice(0, 10);
+  const porCamp = new Map<string, { id: string; nome: string; investimento: number; inscritos: number; cliques: number; ultimo: string }>();
+  const porDiaMap = new Map<string, { leads: number; investimento: number }>();
+  let imp = 0;
+  for (const d of meta) {
+    const c = porCamp.get(d.campanhaId) ?? { id: d.campanhaId, nome: d.campanha, investimento: 0, inscritos: 0, cliques: 0, ultimo: "" };
+    c.investimento += d.investimento; c.inscritos += d.leads; c.cliques += d.cliques;
+    if (d.investimento > 0 && d.data > c.ultimo) c.ultimo = d.data;
+    porCamp.set(d.campanhaId, c);
+    const v = porDiaMap.get(d.data) ?? { leads: 0, investimento: 0 };
+    v.leads += d.leads; v.investimento += d.investimento; porDiaMap.set(d.data, v);
+    imp += d.impressoes;
+  }
+  const campanhas = [...porCamp.values()].filter(c => c.investimento > 0 || c.inscritos > 0)
+    .map(c => ({ id: c.id, nome: c.nome, ativa: c.ultimo >= ontem, investimento: r2(c.investimento), inscritos: c.inscritos, cpl: div(c.investimento, c.inscritos), cliques: c.cliques }))
+    .sort((a, b) => b.investimento - a.investimento);
+  const comGasto = meta.filter(d => d.investimento > 0).map(d => d.data).sort();
+  const inicio = comGasto[0] ?? null, fim = comGasto.at(-1) ?? null;
+  const investimento = r2(campanhas.reduce((s, c) => s + c.investimento, 0));
+  const inscritos = campanhas.reduce((s, c) => s + c.inscritos, 0);
+  const cliques = campanhas.reduce((s, c) => s + c.cliques, 0);
+  return {
+    investimento, inscritos, cpl: div(investimento, inscritos), impressoes: imp, cliques, ctr: imp ? r2((cliques / imp) * 100) : null,
+    ativo: campanhas.some(c => c.ativa), inicio, fim, campanhas,
+    porDia: inicio && fim ? diasEntre(inicio, fim).map(data => ({ data, leads: porDiaMap.get(data)?.leads ?? 0, investimento: r2(porDiaMap.get(data)?.investimento ?? 0) })) : [],
+  };
 }
 
 function montarMeta(meta: MetaDia[], fim: string) {
@@ -101,7 +137,9 @@ export async function gerar(): Promise<Relatorio> {
     usarCv ? limite(lerLeadsCV(INICIO), "O CV") : Promise.resolve([] as LeadCV[]),
   ]);
   const meta = metaRes.status === "fulfilled" ? metaRes.value : (erros.meta = String((metaRes.reason as Error)?.message ?? metaRes.reason), []);
-  const { campanhas, produtos, invDia } = montarMeta(meta, hoje);
+  const vagas = montarVagas(meta.filter(d => d.produto === VAGAS), hoje);
+  const metaFeiroes = meta.filter(d => d.produto !== VAGAS);
+  const { campanhas, produtos, invDia } = montarMeta(metaFeiroes, hoje);
   const investimento = r2(produtos.reduce((s, p) => s + p.investimento, 0));
   const leadsMeta = produtos.reduce((s, p) => s + p.leadsMeta, 0);
   const diasMeta = [...invDia.keys()].sort();
@@ -112,7 +150,7 @@ export async function gerar(): Promise<Relatorio> {
     // CRM pela foto do NotificaLead. A comparação com o Meta usa só os dias
     // até a data da foto, para os dois lados cobrirem o mesmo período.
     const ate = FOTO.ate;
-    const metaAte = meta.filter(d => d.data <= ate);
+    const metaAte = metaFeiroes.filter(d => d.data <= ate);
     const regras = REGRAS.map(r => {
       const f = FOTO.regras.find(x => x.id === r.id);
       const ds = metaAte.filter(d => r.produtos.includes(d.produto));
@@ -135,7 +173,7 @@ export async function gerar(): Promise<Relatorio> {
       horas: FOTO.horas.map((leads, hora) => ({ hora, leads })),
       formularios: FOTO.formularios.map(f => ({ ...f, regra: nomeRegra(f.regra) })),
       qualidade: FOTO.regras.map(r => ({ regra: nomeRegra(r.id), leads: r.leads, unicos: r.unicos, semEmail: r.semEmail, telefoneInvalido: r.telefoneInvalido })),
-      situacoes: FOTO.situacoes, semRegra: 0,
+      situacoes: FOTO.situacoes, semRegra: 0, vagas,
     };
   }
 
@@ -203,7 +241,7 @@ export async function gerar(): Promise<Relatorio> {
     formularios: [...formMap.values()].sort((a, b) => b.leads - a.leads),
     qualidade,
     situacoes: [...sitMap.entries()].map(([situacao, n]) => ({ situacao, leads: n })).sort((a, b) => b.leads - a.leads),
-    semRegra,
+    semRegra, vagas,
   };
 }
 
@@ -215,7 +253,7 @@ const emCache = unstable_cache(async () => {
   const r = await gerar();
   if (r.erros.meta || r.erros.cv) throw new Parcial(r);
   return r;
-}, ["relatorio-feiroes-v2"], { revalidate: CACHE_SEGUNDOS });
+}, ["relatorio-feiroes-v3"], { revalidate: CACHE_SEGUNDOS });
 
 export async function obterRelatorio(): Promise<Relatorio> {
   try { return await emCache(); }

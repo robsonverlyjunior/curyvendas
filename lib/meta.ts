@@ -1,4 +1,4 @@
-import { ADS_EDITOR_URL, CAMPANHAS_EXCLUIDAS, META_ACCOUNT_ID, META_LEAD_ACTION, PRODUTOS } from "./config";
+import { ADS_EDITOR_URL, CAMPANHAS_EXCLUIDAS, CAMPANHAS_VAGAS, VAGAS, META_ACCOUNT_ID, META_LEAD_ACTION, PRODUTOS } from "./config";
 
 /**
  * Leitura do Meta Ads pelo Ads Editor (MCP sobre HTTP). Só chama ferramentas
@@ -95,6 +95,7 @@ const num = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n
 
 export function produtoDaCampanha(nome: string): string | null {
   if (CAMPANHAS_EXCLUIDAS.test(nome)) return null;
+  if (CAMPANHAS_VAGAS.test(nome)) return VAGAS;
   return PRODUTOS.find(p => p.campanha.test(nome))?.id ?? null;
 }
 
