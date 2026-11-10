@@ -73,6 +73,18 @@ export default async function Pagina() {
   const metaAteFoto = r.regras.reduce((s, x) => s + x.leadsMeta, 0);
   const lista = destaques(r);
   const totalHoras = r.horas.reduce((s, h) => s + h.leads, 0);
+  const ORDEM = ["corre", "servidor", "porto", "zona-norte"];
+  const linhas = [
+    ...[...r.produtos].sort((a, b) => ORDEM.indexOf(a.id) - ORDEM.indexOf(b.id)).map(p => ({
+      id: p.id, nome: p.nome, cor: COR_PRODUTO[p.id] ?? "var(--c-porto)", ativo: p.ativo, inicio: p.inicio, fim: p.fim,
+      investimento: p.investimento, leads: p.leadsMeta, cpl: p.cpl, cliques: p.cliques, versoes: p.campanhas,
+    })),
+    ...(r.vagas.campanhas.length ? [{
+      id: "vagas", nome: "Vagas de corretor", cor: "var(--c-vagas)", ativo: r.vagas.ativo, inicio: r.vagas.inicio, fim: r.vagas.fim,
+      investimento: r.vagas.investimento, leads: r.vagas.inscritos, cpl: r.vagas.cpl, cliques: r.vagas.cliques, versoes: r.vagas.campanhas.map(c => c.nome),
+    }] : []),
+  ];
+  const totalGeral = linhas.reduce((t, l) => ({ investimento: t.investimento + l.investimento, leads: t.leads + l.leads, cliques: t.cliques + l.cliques }), { investimento: 0, leads: 0, cliques: 0 });
 
   return (
     <main className="pagina">
@@ -138,7 +150,7 @@ export default async function Pagina() {
         </div>
       </Secao>
 
-      <Secao n={3} titulo="Produtos e campanhas" sub="Números do Meta Ads por produto, com a curva de leads por dia.">
+      <Secao n={3} titulo="Campanhas" sub="Números do Meta Ads por campanha unificada, com a curva de leads por dia.">
         <div className="produtos">
           {r.produtos.map(p => (
             <article className="card produto" key={p.id} style={{ ["--cor" as string]: COR_PRODUTO[p.id] }}>
@@ -159,19 +171,31 @@ export default async function Pagina() {
             </article>
           ))}
         </div>
-        <div className="card">
-          <h3>Campanhas</h3>
+        <div className="card" id="campanhas-unificadas">
+          <h3>Resumo por campanha</h3>
+          <p className="sub" style={{ marginTop: -6, marginBottom: 10 }}>Cada linha soma todas as versões da mesma campanha no Meta (cópias, vídeo, públicos abertos). Passe o mouse no nome para ver quais foram somadas.</p>
           <div className="tabela cartoes"><table>
-            <thead><tr><th>Campanha</th><th>Produto</th><th>Status</th><th className="n">Investimento</th><th className="n">Leads</th><th className="n">Custo por lead</th><th className="n">Cliques</th></tr></thead>
-            <tbody>{r.campanhas.map(c => (
-              <tr key={c.id}>
-                <td className="campanha">{c.nome}</td>
-                <td data-r="Produto"><span className="ponto" style={{ background: COR_PRODUTO[c.produto] }} />{r.produtos.find(p => p.id === c.produto)?.nome ?? c.produto}</td>
-                <td data-r="Status"><span className={`selo pequeno ${c.ativa ? "on" : ""}`}>{c.ativa ? "Ativa" : "Pausada"}</span></td>
-                <td className="n" data-r="Investimento">{brl(c.investimento)}</td><td className="n" data-r="Leads">{int(c.leadsMeta)}</td><td className="n" data-r="Custo por lead">{brl(c.cpl)}</td><td className="n" data-r="Cliques">{int(c.cliques)}</td>
-              </tr>
-            ))}</tbody>
-            <tfoot><tr><td className="campanha">Total</td><td className="vazia" /><td className="vazia" /><td className="n" data-r="Investimento">{brl(r.totais.investimento)}</td><td className="n" data-r="Leads">{int(r.totais.leadsMeta)}</td><td className="n" data-r="Custo por lead">{brl(r.totais.leadsMeta ? r.totais.investimento / r.totais.leadsMeta : null)}</td><td className="n" data-r="Cliques">{int(r.campanhas.reduce((s, c) => s + c.cliques, 0))}</td></tr></tfoot>
+            <thead><tr><th>Campanha</th><th>Status</th><th>Período</th><th className="n">Valor gasto</th><th className="n">Leads</th><th className="n">CPL</th><th className="n">Cliques</th></tr></thead>
+            <tbody>
+              {linhas.map(l => (
+                <tr key={l.id} className={l.id === "vagas" ? "linha-vagas" : ""}>
+                  <td className="campanha" title={l.versoes.join("\n")}>
+                    <span className="ponto" style={{ background: l.cor }} />{l.nome}
+                    <small className="versoes">{l.versoes.length} {l.versoes.length === 1 ? "campanha" : "campanhas somadas"}</small>
+                  </td>
+                  <td data-r="Status"><span className={`selo pequeno ${l.ativo ? "on" : ""}`}>{l.ativo ? "Ativa" : "Pausada"}</span></td>
+                  <td data-r="Período">{dm(l.inicio)} a {dm(l.fim)}</td>
+                  <td className="n" data-r="Valor gasto">{brl(l.investimento)}</td>
+                  <td className="n" data-r={l.id === "vagas" ? "Inscritos" : "Leads"}>{int(l.leads)}</td>
+                  <td className="n forte" data-r="CPL">{brl(l.cpl)}</td>
+                  <td className="n" data-r="Cliques">{int(l.cliques)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="subtotal"><td className="campanha">Feirões (venda)</td><td className="vazia" /><td className="vazia" /><td className="n" data-r="Valor gasto">{brl(r.totais.investimento)}</td><td className="n" data-r="Leads">{int(r.totais.leadsMeta)}</td><td className="n forte" data-r="CPL">{brl(r.totais.leadsMeta ? r.totais.investimento / r.totais.leadsMeta : null)}</td><td className="n" data-r="Cliques">{int(r.produtos.reduce((s, p) => s + p.cliques, 0))}</td></tr>
+              <tr><td className="campanha">Total geral (com vagas)</td><td className="vazia" /><td className="vazia" /><td className="n" data-r="Valor gasto">{brl(totalGeral.investimento)}</td><td className="n" data-r="Leads">{int(totalGeral.leads)}</td><td className="n forte" data-r="CPL">{brl(totalGeral.leads ? totalGeral.investimento / totalGeral.leads : null)}</td><td className="n" data-r="Cliques">{int(totalGeral.cliques)}</td></tr>
+            </tfoot>
           </table></div>
         </div>
       </Secao>
@@ -252,21 +276,6 @@ export default async function Pagina() {
               <h3>Inscritos por semana</h3>
               <BarrasDia dias={semanas(r.vagas.porDia)} series={[{ id: "v", nome: "Inscritos", cor: "var(--c-vagas)" }]} formato={n => `${int(n)} inscritos`} formatoEixo={int} titulo="Inscritos para vaga por semana" altura={300} />
             </div>
-          </div>
-        )}
-        {r.vagas.campanhas.length > 0 && (
-          <div className="card">
-            <h3>Campanhas de vaga</h3>
-            <div className="tabela cartoes" ><table>
-              <thead><tr><th>Campanha</th><th>Status</th><th className="n">Investimento</th><th className="n">Inscritos</th><th className="n">Custo por inscrito</th></tr></thead>
-              <tbody>{r.vagas.campanhas.map(c => (
-                <tr key={c.id}>
-                  <td className="campanha">{c.nome}</td>
-                  <td data-r="Status"><span className={`selo pequeno ${c.ativa ? "on" : ""}`}>{c.ativa ? "Ativa" : "Pausada"}</span></td>
-                  <td className="n" data-r="Investimento">{brl(c.investimento)}</td><td className="n" data-r="Inscritos">{int(c.inscritos)}</td><td className="n" data-r="Custo por inscrito">{brl(c.cpl)}</td>
-                </tr>
-              ))}</tbody>
-            </table></div>
           </div>
         )}
       </Secao>

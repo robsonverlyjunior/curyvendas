@@ -120,7 +120,7 @@ th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--lin
 th { font-size: var(--t-xs); color: var(--suave); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
 tbody tr:hover td { background: var(--painel-2); }
 tfoot td { font-weight: 600; border-bottom: 0; border-top: 1px solid var(--linha-forte); }
-td.campanha { white-space: normal; min-width: 220px; max-width: 360px; font-size: var(--t-xs); line-height: 1.4; word-break: break-word; }
+td.campanha { white-space: normal; min-width: 180px; max-width: 360px; font-size: var(--t-sm); font-weight: 500; line-height: 1.4; word-break: break-word; }
 .n { text-align: right; }
 td small { margin-left: 4px; }
 
@@ -169,3 +169,9 @@ td small { margin-left: 4px; }
   .rolagem, .tabela { overflow: visible; }
   .dica { display: none; }
 }
+td .versoes { display: block; color: var(--fraco); font-size: var(--t-xs); font-weight: 400; margin-top: 2px; }
+td.campanha[title] { cursor: help; }
+td.forte { font-weight: 600; }
+tr.linha-vagas td { border-top: 1px dashed var(--linha-forte); }
+tfoot tr.subtotal td { color: var(--suave); font-weight: 500; }
+tfoot tr.subtotal td.forte { color: var(--texto); }
