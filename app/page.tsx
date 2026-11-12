@@ -1,6 +1,7 @@
 import { obterRelatorio, type Relatorio } from "@/lib/relatorio";
 import { REGRAS } from "@/lib/config";
 import { Barras, BarrasDia, Mini, Proporcao, type Serie } from "./graficos";
+import { FiltroPeriodo } from "./filtro";
 
 // Gerada quando alguém abre (nunca no build). Os dados ficam em cache por
 // 10 minutos em lib/relatorio.ts, então só a primeira visita espera a busca.
@@ -13,10 +14,11 @@ const COR_PRODUTO: Record<string, string> = { corre: "var(--c-corre)", porto: "v
 const brl = (n: number | null) => (n == null ? "—" : n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
 const brl0 = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 const brlEixo = (n: number) => (n >= 1000 ? `R$ ${(n / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} mil` : `R$ ${Math.round(n)}`);
-const int = (n: number) => n.toLocaleString("pt-BR");
+const int = (n: number | null) => (n == null ? "—" : n.toLocaleString("pt-BR"));
 const pct = (n: number | null, casas = 1) => (n == null ? "—" : `${n.toLocaleString("pt-BR", { maximumFractionDigits: casas })}%`);
 const dm = (d: string | null) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : "—");
-const sinal = (n: number) => (n > 0 ? `+${int(n)}` : int(n));
+const sinal = (n: number | null) => (n == null ? "—" : n > 0 ? `+${int(n)}` : int(n));
+const fora = (x: { diferenca: number | null; leadsMeta: number }) => x.diferenca != null && Math.abs(x.diferenca) > Math.max(10, x.leadsMeta * 0.05);
 
 /** Agrupa dias em semanas (segunda a domingo) para o gráfico de vagas. */
 function semanas(dias: { data: string; leads: number }[]) {
@@ -33,9 +35,10 @@ function semanas(dias: { data: string; leads: number }[]) {
 function destaques(r: Relatorio): string[] {
   const out: string[] = [];
   const foto = r.crm.fonte === "foto";
-  const difs = r.regras.map(x => `${x.nome.replace("Feirão do ", "")} ${sinal(x.diferenca)}`).join(", ");
-  const batem = r.regras.every(x => Math.abs(x.diferenca) <= Math.max(10, x.leadsMeta * 0.05));
-  if (r.regras.some(x => x.leadsMeta > 0))
+  const comCrm = r.regras.filter(x => x.diferenca != null && (x.leadsMeta > 0 || (x.leadsCrm ?? 0) > 0));
+  const difs = comCrm.map(x => `${x.nome.replace("Feirão do ", "")} ${sinal(x.diferenca)}`).join(", ");
+  const batem = comCrm.every(x => !fora(x));
+  if (comCrm.length)
     out.push(batem
       ? `Meta e ${foto ? "NotificaLead" : "CRM"} batem: a diferença de leads é pequena (${difs}). Não há perda entre o anúncio e o CRM.`
       : `Atenção: diferença relevante de leads entre Meta e CRM (${difs}). Vale checar a integração dos formulários.`);
@@ -45,7 +48,8 @@ function destaques(r: Relatorio): string[] {
     const cpl = (xs: typeof ult) => { const l = xs.reduce((s, d) => s + d.leads, 0); return l ? xs.reduce((s, d) => s + d.investimento, 0) / l : null; };
     const a = cpl(ult), b = cpl(ant);
     const gasto = ult.reduce((s, d) => s + d.investimento, 0) / Math.max(1, ult.length);
-    out.push(`${p.nome} é o produto ativo: nos últimos 7 dias gastou em média ${brl0(gasto)}/dia com custo por lead de ${brl(a)}${b ? ` (${a! > b ? "subiu" : "caiu"} de ${brl(b)} na semana anterior)` : ""}.`);
+    if (p.porDia.length < 3) continue;
+    out.push(`${p.nome} é o produto ativo: nos últimos ${Math.min(7, ult.length)} dias do período gastou em média ${brl0(gasto)}/dia com custo por lead de ${brl(a)}${b ? ` (${a! > b ? "subiu" : "caiu"} de ${brl(b)} na semana anterior)` : ""}.`);
   }
   const comVolume = r.produtos.filter(p => p.leadsMeta >= 30 && p.cpl != null).sort((a, b) => a.cpl! - b.cpl!);
   if (comVolume.length > 1)
@@ -53,17 +57,23 @@ function destaques(r: Relatorio): string[] {
   const horas = [...r.horas].sort((a, b) => b.leads - a.leads).slice(0, 3).map(h => `${h.hora}h`);
   const noite = r.horas.filter(h => h.hora >= 18).reduce((s, h) => s + h.leads, 0);
   const totH = r.horas.reduce((s, h) => s + h.leads, 0);
-  if (totH) out.push(`Os leads chegam mais à noite: ${pct((noite / totH) * 100, 0)} entre 18h e 23h, com pico às ${horas.join(", ")}. É o horário para o atendimento estar disponível.`);
+  if (totH && r.crm.detalhesNoPeriodo) out.push(`Os leads chegam mais à noite: ${pct((noite / totH) * 100, 0)} entre 18h e 23h, com pico às ${horas.join(", ")}. É o horário para o atendimento estar disponível.`);
   const novo = r.situacoes.find(s => /^novo$/i.test(s.situacao))?.leads ?? 0;
-  if (r.totais.leadsCrm && novo / r.totais.leadsCrm > 0.8)
+  if (r.crm.detalhesNoPeriodo && r.totais.leadsCrm && novo / r.totais.leadsCrm > 0.8)
     out.push(`${pct((novo / r.totais.leadsCrm) * 100, 0)} dos leads ainda estão em "Novo"${foto ? " no NotificaLead" : ""}: ou o retorno não está sendo registrado, ou os leads não foram trabalhados.`);
+  if (!r.crm.cobre) out.unshift(`Não há dados do NotificaLead para ${r.periodo.rotulo.toLowerCase()} (temos até ${dm(r.crm.ate)}). Os números do Meta estão completos; os de CRM entram quando a leitura ao vivo for ligada.`);
   if (r.vagas.inscritos > 0)
-    out.push(`Vagas de corretor: ${int(r.vagas.inscritos)} pessoas se inscreveram desde ${dm(r.vagas.inicio)}, a ${brl(r.vagas.cpl)} por inscrito${r.vagas.ativo ? " (campanha ativa)" : ""}.`);
+    out.push(`Vagas de corretor: ${int(r.vagas.inscritos)} pessoas se inscreveram ${r.periodo.completo ? `desde ${dm(r.vagas.inicio)}` : "no período"}, a ${brl(r.vagas.cpl)} por inscrito${r.vagas.ativo ? " (campanha ativa)" : ""}.`);
   return out;
 }
 
-export default async function Pagina() {
-  const r = await obterRelatorio();
+export default async function Pagina({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const sp = await searchParams;
+  const um = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+  const r = await obterRelatorio({ p: um(sp.p), de: um(sp.de), ate: um(sp.ate) });
+  const periodoTxt = r.periodo.de === r.periodo.ate ? `${dm(r.periodo.de)}/${r.periodo.de.slice(0, 4)}` : `${dm(r.periodo.de)} a ${dm(r.periodo.ate)}/${r.periodo.ate.slice(0, 4)}`;
+  const cobreTxt = r.crm.cobre ? (r.crm.cobre.de === r.crm.cobre.ate ? dm(r.crm.cobre.de) : `${dm(r.crm.cobre.de)} a ${dm(r.crm.cobre.ate)}`) : null;
+  const crmParcial = !!r.crm.cobre && (r.crm.cobre.de !== r.periodo.de || r.crm.cobre.ate !== r.periodo.ate);
   const foto = r.crm.fonte === "foto";
   const crm = foto ? "NotificaLead" : "CV";
   const temMeta = !r.erros.meta;
@@ -91,7 +101,8 @@ export default async function Pagina() {
       <header className="topo">
         <p className="sobre">Cury Vendas RJ · Relatório de performance</p>
         <h1>Feirões: Meta Ads × leads no CRM</h1>
-        <p className="periodo">Período de {dm(r.inicio)} a {dm(r.fim)}/{r.fim.slice(0, 4)} · campanhas de leads de venda dos feirões</p>
+        <p className="periodo"><b>{r.periodo.rotulo}</b> · {periodoTxt} · campanhas de leads dos feirões e vagas</p>
+        <FiltroPeriodo preset={r.periodo.preset} de={r.periodo.de} ate={r.periodo.ate} min={r.inicio} max={r.fim} />
         <div className="fontes">
           <span className={`fonte ${temMeta ? "viva" : "erro"}`}><i />Meta Ads {temMeta ? `ao vivo · ${r.geradoEm.split(" às ")[1]}` : "indisponível"}</span>
           <span className={`fonte ${foto ? "fixa" : temCrm ? "viva" : "erro"}`}><i />{foto ? `NotificaLead · dados de ${r.crm.extraidoEm}` : `CV ${temCrm ? "ao vivo" : "indisponível"}`}</span>
@@ -107,8 +118,8 @@ export default async function Pagina() {
       <section className="kpis" aria-label="Indicadores principais">
         <Kpi rotulo="Investimento no Meta" valor={temMeta ? brl(r.totais.investimento) : "—"} nota={`${r.campanhas.length} campanhas de venda · ${r.produtos.length} produtos`} />
         <Kpi rotulo="Leads no Meta" valor={temMeta ? int(r.totais.leadsMeta) : "—"} nota={`custo por lead ${brl(r.totais.leadsMeta ? r.totais.investimento / r.totais.leadsMeta : null)}`} />
-        <Kpi rotulo={`Leads no ${crm}`} valor={temCrm ? int(r.totais.leadsCrm) : "—"} nota={`${int(r.totais.leadsUnicos)} únicos por telefone${foto ? ` · até ${dm(r.crm.ate)}` : ""}`} />
-        <Kpi rotulo="Custo por lead no CRM" valor={temCrm && temMeta ? brl(r.totais.cplCrm) : "—"} nota={foto ? `${brl0(invAteFoto)} até ${dm(r.crm.ate)} ÷ ${int(r.totais.leadsCrm)} leads` : "investimento ÷ leads no CV"} destaque />
+        <Kpi rotulo={`Leads no ${crm}`} valor={temCrm ? int(r.totais.leadsCrm) : "—"} nota={!r.crm.cobre ? `sem dados neste período (temos até ${dm(r.crm.ate)})` : r.totais.leadsUnicos != null ? `${int(r.totais.leadsUnicos)} únicos por telefone · até ${dm(r.crm.ate)}` : `${cobreTxt}${crmParcial ? ` (dados até ${dm(r.crm.ate)})` : ""}`} />
+        <Kpi rotulo="Custo por lead no CRM" valor={temCrm && temMeta ? brl(r.totais.cplCrm) : "—"} nota={r.crm.cobre ? `${brl0(invAteFoto)} ÷ ${int(r.totais.leadsCrm)} leads (${cobreTxt})` : "sem dados do CRM neste período"} destaque />
       </section>
 
       {lista.length > 0 && (
@@ -118,18 +129,18 @@ export default async function Pagina() {
         </section>
       )}
 
-      <Secao n={1} titulo="Resultado por feirão" sub={`Investimento e leads do Meta comparados com os leads que entraram no ${crm}${foto ? `, até ${dm(r.crm.ate)}` : ""}. Porto e Zona Norte usam o formulário do Corre, por isso entram no Corre.`}>
+      <Secao n={1} titulo="Resultado por feirão" sub={`Investimento e leads do Meta comparados com os leads que entraram no ${crm}${cobreTxt ? `, de ${cobreTxt}` : ""}${!r.crm.cobre ? ` (sem dados do ${crm} neste período: mostrando só o Meta)` : ""}. Porto e Zona Norte usam o formulário do Corre, por isso entram no Corre.`}>
         <div className="feiroes">
           {r.regras.map(x => {
             const share = metaAteFoto ? (x.leadsMeta / metaAteFoto) * 100 : 0;
             return (
               <article className="card feirao" key={x.id} style={{ ["--cor" as string]: COR_REGRA[x.id] }}>
                 <header><h3>{x.nome}</h3><span className="datas">{x.inicio ? `${dm(x.inicio)} a ${dm(x.fim)}` : "sem leads"}</span></header>
-                <div className="grande"><span>{int(x.leadsCrm)}</span><small>leads no {crm}</small></div>
+                <div className="grande"><span>{x.leadsCrm == null ? int(x.leadsMeta) : int(x.leadsCrm)}</span><small>{x.leadsCrm == null ? "leads no Meta" : `leads no ${crm}`}</small></div>
                 <dl className="grade-3">
                   <div><dt>Investimento</dt><dd>{brl(x.investimento)}</dd></div>
                   <div><dt>Leads no Meta</dt><dd>{int(x.leadsMeta)}</dd></div>
-                  <div><dt>Diferença</dt><dd className={Math.abs(x.diferenca) > Math.max(10, x.leadsMeta * 0.05) ? "alerta" : ""}>{sinal(x.diferenca)}</dd></div>
+                  <div><dt>Diferença</dt><dd className={fora(x) ? "alerta" : ""}>{sinal(x.diferenca)}</dd></div>
                   <div><dt>Custo por lead</dt><dd>{brl(x.cplCrm)}</dd></div>
                   <div><dt>Participação</dt><dd>{pct(share, 0)}</dd></div>
                 </dl>
@@ -200,7 +211,7 @@ export default async function Pagina() {
         </div>
       </Secao>
 
-      <Secao n={4} titulo="Origem e horário dos leads">
+      <Secao n={4} titulo="Origem e horário dos leads" sub={r.crm.detalhesNoPeriodo ? undefined : `Estes números ainda não filtram por data: são do período completo do NotificaLead (${dm(r.inicio)} a ${dm(r.crm.ate)}). Passam a seguir o filtro quando a leitura ao vivo for ligada.`}>
         <div className="duas">
           <div className="card">
             <h3>Leads por formulário</h3>
@@ -221,7 +232,7 @@ export default async function Pagina() {
         </div>
       </Secao>
 
-      <Secao n={5} titulo="Qualidade e andamento">
+      <Secao n={5} titulo="Qualidade e andamento" sub={r.crm.detalhesNoPeriodo ? undefined : `Estes números ainda não filtram por data: são do período completo do NotificaLead (${dm(r.inicio)} a ${dm(r.crm.ate)}). Passam a seguir o filtro quando a leitura ao vivo for ligada.`}>
         <div className="duas">
           <div className="card">
             <h3>Qualidade dos contatos</h3>

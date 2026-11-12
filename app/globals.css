@@ -175,3 +175,20 @@ td.forte { font-weight: 600; }
 tr.linha-vagas td { border-top: 1px dashed var(--linha-forte); }
 tfoot tr.subtotal td { color: var(--suave); font-weight: 500; }
 tfoot tr.subtotal td.forte { color: var(--texto); }
+
+/* ---------- Filtro de período ---------- */
+.filtro { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-top: 6px; transition: opacity .2s; }
+.filtro.carregando { opacity: .55; pointer-events: none; }
+.filtro-atalhos { display: inline-flex; flex-wrap: wrap; gap: 4px; background: var(--painel); border: 1px solid var(--linha); border-radius: 999px; padding: 4px; }
+.filtro button { font: inherit; font-size: var(--t-sm); font-weight: 500; color: var(--suave); background: transparent; border: 0; border-radius: 999px; padding: 6px 12px; cursor: pointer; white-space: nowrap; }
+.filtro button:hover { color: var(--texto); background: var(--painel-2); }
+.filtro button.ativo { color: var(--bg); background: var(--texto); }
+.filtro button:focus-visible { outline: 2px solid var(--c-servidor); outline-offset: 2px; }
+.filtro-datas { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.filtro-datas label { display: inline-flex; align-items: center; gap: 6px; font-size: var(--t-sm); color: var(--suave); }
+.filtro-datas input { font: inherit; font-size: var(--t-sm); color: var(--texto); background: var(--painel); border: 1px solid var(--linha); border-radius: var(--raio-p); padding: 6px 8px; }
+.filtro-datas .aplicar { color: var(--bg); background: var(--c-corre); border-radius: var(--raio-p); padding: 7px 14px; }
+.filtro-datas .aplicar:hover { color: var(--bg); background: var(--c-corre); filter: brightness(1.08); }
+.periodo b { color: var(--texto); font-weight: 600; }
+@media (max-width: 520px) { .filtro-atalhos { border-radius: var(--raio); } }
+@media print { .filtro { display: none; } }
