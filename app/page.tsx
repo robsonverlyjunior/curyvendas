@@ -206,7 +206,7 @@ export default async function Pagina({ searchParams }: { searchParams: Promise<R
               ))}
             </tbody>
             <tfoot>
-              <tr className="subtotal"><td className="campanha">Feirões (venda)</td><td className="vazia" /><td className="vazia" /><td className="n" data-r="Valor gasto">{brl(r.totais.investimento)}</td><td className="n" data-r="Leads">{int(r.totais.leadsMeta)}</td><td className="n forte" data-r="CPL">{brl(r.totais.leadsMeta ? r.totais.investimento / r.totais.leadsMeta : null)}</td><td className="n" data-r="Cliques">{int(r.produtos.reduce((s, p) => s + p.cliques, 0))}</td></tr>
+              <tr className="subtotal"><td className="campanha">Campanhas de venda</td><td className="vazia" /><td className="vazia" /><td className="n" data-r="Valor gasto">{brl(r.totais.investimento)}</td><td className="n" data-r="Leads">{int(r.totais.leadsMeta)}</td><td className="n forte" data-r="CPL">{brl(r.totais.leadsMeta ? r.totais.investimento / r.totais.leadsMeta : null)}</td><td className="n" data-r="Cliques">{int(r.produtos.reduce((s, p) => s + p.cliques, 0))}</td></tr>
               <tr><td className="campanha">Total geral (com vagas)</td><td className="vazia" /><td className="vazia" /><td className="n" data-r="Valor gasto">{brl(totalGeral.investimento)}</td><td className="n" data-r="Leads">{int(totalGeral.leads)}</td><td className="n forte" data-r="CPL">{brl(totalGeral.leads ? totalGeral.investimento / totalGeral.leads : null)}</td><td className="n" data-r="Cliques">{int(totalGeral.cliques)}</td></tr>
             </tfoot>
           </table></div>
