@@ -28,7 +28,11 @@ export const PRODUTOS: Produto[] = [
   { id: "corre", nome: "Feirão do Corre", campanha: /FEIR[AÃ]O[_ ]DO[_ ]CORRE/i },
   { id: "porto", nome: "Porto", campanha: /\[PORTO\]/i },
   { id: "zona-norte", nome: "Zona Norte", campanha: /\[ZONA ?NORTE\]/i },
+  { id: "virada", nome: "Virada Cury", campanha: /VIRADA/i },
 ];
+
+/** Campanha de leads que não casa com nenhum produto: aparece aqui, nunca some. */
+export const OUTRAS = { id: "outras", nome: "Outras campanhas" };
 
 /** Campanhas que nunca entram, mesmo que casem com um produto. */
 export const CAMPANHAS_EXCLUIDAS = /\[INSTA\]/i;

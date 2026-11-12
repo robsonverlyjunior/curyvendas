@@ -1,5 +1,5 @@
 import { unstable_cache } from "next/cache";
-import { CACHE_SEGUNDOS, INICIO, PRODUTOS, REGRAS, VAGAS } from "./config";
+import { CACHE_SEGUNDOS, INICIO, OUTRAS, PRODUTOS, REGRAS, VAGAS } from "./config";
 import { lerMeta, type MetaDia } from "./meta";
 import { FOTO } from "./foto-notifica";
 
@@ -99,7 +99,7 @@ function montarMeta(meta: MetaDia[], fim: string) {
     .map(({ ultimoGasto, ...c }) => ({ ...c, investimento: r2(c.investimento), ativa: ultimoGasto >= ultimoDia, cpl: div(c.investimento, c.leadsMeta) }))
     .sort((a, b) => b.investimento - a.investimento);
 
-  const produtos = PRODUTOS.map(p => {
+  const produtos = [...PRODUTOS, OUTRAS].map(p => {
     const ds = meta.filter(d => d.produto === p.id);
     const comGasto = ds.filter(d => d.investimento > 0).map(d => d.data).sort();
     const inv = ds.reduce((s, d) => s + d.investimento, 0);
@@ -244,7 +244,7 @@ const emCache = unstable_cache(async () => {
   const d = await coletar();
   if (d.erros.meta) throw new Parcial(d);
   return d;
-}, ["relatorio-feiroes-dados-v1"], { revalidate: CACHE_SEGUNDOS });
+}, ["relatorio-feiroes-dados-v2"], { revalidate: CACHE_SEGUNDOS });
 
 /** Relatório do período pedido. Os dados ficam 10 minutos em cache. */
 export async function obterRelatorio(filtro: { p?: string; de?: string; ate?: string } = {}): Promise<Relatorio> {

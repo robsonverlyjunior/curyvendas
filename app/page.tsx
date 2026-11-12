@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 const COR_REGRA: Record<string, string> = { corre: "var(--c-corre)", servidor: "var(--c-servidor)" };
-const COR_PRODUTO: Record<string, string> = { corre: "var(--c-corre)", porto: "var(--c-porto)", "zona-norte": "var(--c-zn)", servidor: "var(--c-servidor)" };
+const COR_PRODUTO: Record<string, string> = { corre: "var(--c-corre)", porto: "var(--c-porto)", "zona-norte": "var(--c-zn)", servidor: "var(--c-servidor)", virada: "var(--c-virada)", outras: "var(--fraco)" };
 
 const brl = (n: number | null) => (n == null ? "—" : n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
 const brl0 = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
@@ -79,11 +79,13 @@ export default async function Pagina({ searchParams }: { searchParams: Promise<R
   const temMeta = !r.erros.meta;
   const temCrm = !r.erros.cv;
   const series: Serie[] = REGRAS.map(g => ({ id: g.id, nome: g.nome, cor: COR_REGRA[g.id] ?? "var(--c-porto)" }));
+  const foraDasRegras = r.produtos.filter(p => !REGRAS.some(g => g.produtos.includes(p.id)));
+  const seriesInv: Serie[] = [...series, ...foraDasRegras.map(p => ({ id: p.id, nome: p.nome, cor: COR_PRODUTO[p.id] ?? "var(--fraco)" }))];
   const invAteFoto = r.regras.reduce((s, x) => s + x.investimento, 0);
   const metaAteFoto = r.regras.reduce((s, x) => s + x.leadsMeta, 0);
   const lista = destaques(r);
   const totalHoras = r.horas.reduce((s, h) => s + h.leads, 0);
-  const ORDEM = ["corre", "servidor", "porto", "zona-norte"];
+  const ORDEM = ["virada", "corre", "servidor", "porto", "zona-norte", "outras"];
   const linhas = [
     ...[...r.produtos].sort((a, b) => ORDEM.indexOf(a.id) - ORDEM.indexOf(b.id)).map(p => ({
       id: p.id, nome: p.nome, cor: COR_PRODUTO[p.id] ?? "var(--c-porto)", ativo: p.ativo, inicio: p.inicio, fim: p.fim,
@@ -152,8 +154,8 @@ export default async function Pagina({ searchParams }: { searchParams: Promise<R
 
       <Secao n={2} titulo="Evolução diária" sub="Passe o mouse (ou toque) nas barras para ver o valor de cada dia.">
         <div className="card">
-          <div className="cab-grafico"><h3>Investimento por dia</h3><Legenda series={series} /></div>
-          <BarrasDia dias={r.investimentoDia} series={series} formato={brl} formatoEixo={brlEixo} titulo="Investimento por dia" />
+          <div className="cab-grafico"><h3>Investimento por dia</h3><Legenda series={seriesInv} /></div>
+          <BarrasDia dias={r.investimentoDia} series={seriesInv} formato={brl} formatoEixo={brlEixo} titulo="Investimento por dia" />
         </div>
         <div className="card">
           <div className="cab-grafico"><h3>Leads no {crm} por dia</h3><Legenda series={series} /></div>
